@@ -11,21 +11,10 @@ import re
 import glob
 import logging
 
-import nltk
-import numpy as np
 import pandas as pd
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-
-# Download required NLTK resources on first run
-# "omw-1.4" is the Open Multilingual Wordnet v1.4, required by WordNetLemmatizer
-for resource in ("stopwords", "wordnet", "omw-1.4"):
-    try:
-        nltk.data.find(f"corpora/{resource}")
-    except LookupError:
-        nltk.download(resource, quiet=True)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -33,12 +22,11 @@ logger = logging.getLogger(__name__)
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 LABEL_MAP = {"Bearish": 0, "Somewhat-Bearish": 1, "Neutral": 2, "Somewhat-Bullish": 3, "Bullish": 4}
 
-_lemmatizer = WordNetLemmatizer()
-_stop_words = set(stopwords.words("english"))
+_stop_words = ENGLISH_STOP_WORDS
 
 
 def clean_text(text: str) -> str:
-    """Lower-case, remove HTML/URLs/punctuation, lemmatize and strip stop-words."""
+    """Lower-case, remove HTML/URLs/punctuation and strip stop-words."""
     if not isinstance(text, str):
         return ""
     text = text.lower()
@@ -47,11 +35,7 @@ def clean_text(text: str) -> str:
     text = re.sub(r"[^a-z\s]", " ", text)              # keep only letters
     text = re.sub(r"\s+", " ", text).strip()
 
-    tokens = [
-        _lemmatizer.lemmatize(tok)
-        for tok in text.split()
-        if tok not in _stop_words and len(tok) > 2
-    ]
+    tokens = [tok for tok in text.split() if tok not in _stop_words and len(tok) > 2]
     return " ".join(tokens)
 
 
