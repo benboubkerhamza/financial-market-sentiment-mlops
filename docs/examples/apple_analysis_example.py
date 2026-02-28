@@ -1,6 +1,11 @@
 """
 Example: Targeted analysis on Apple (AAPL)
 Fetches market data and news specific to Apple
+
+USAGE:
+    python docs/examples/apple_analysis_example.py
+
+NOTE: This will download data. Run only when needed.
 """
 
 import sys
@@ -149,8 +154,17 @@ def example_with_newsapi():
 
 
 if __name__ == "__main__":
-    # Run Apple analysis
-    apple_data = analyze_apple()
+    print("\n⚠️  This example will download Apple data from the internet.")
+    print("Make sure you have:")
+    print("  1. Kaggle dataset in data/raw/all-data.csv")
+    print("  2. Internet connection for yfinance")
     
-    # Display NewsAPI example
-    example_with_newsapi()
+    response = input("\nContinue? (y/n): ")
+    if response.lower() == 'y':
+        # Run Apple analysis
+        apple_data = analyze_apple()
+        
+        # Display NewsAPI example
+        example_with_newsapi()
+    else:
+        print("Example cancelled.")

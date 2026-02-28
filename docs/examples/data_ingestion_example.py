@@ -1,5 +1,10 @@
 """
 Example script demonstrating data ingestion from Kaggle and yfinance
+
+USAGE:
+    python docs/examples/data_ingestion_example.py
+
+NOTE: This will download data. Run only when needed.
 """
 
 import sys
@@ -11,6 +16,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from src.ingestion import DataIngestion
 
 def main():
+    """Main function - only runs when explicitly called"""
     print("=== Financial Market Sentiment Data Ingestion Example ===\n")
     
     # Initialize data ingestion
@@ -61,5 +67,15 @@ def main():
     print("\n=== Data Ingestion Complete ===")
     print(f"Data saved in: data/processed/")
 
+
 if __name__ == "__main__":
-    main()
+    print("\n⚠️  This example will download data from the internet.")
+    print("Make sure you have:")
+    print("  1. Kaggle dataset in data/raw/all-data.csv")
+    print("  2. Internet connection for yfinance")
+    
+    response = input("\nContinue? (y/n): ")
+    if response.lower() == 'y':
+        main()
+    else:
+        print("Example cancelled.")
