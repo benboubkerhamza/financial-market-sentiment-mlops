@@ -174,7 +174,7 @@ class NewsSourcesFetcher(BaseIngestion):
                 )
 
         self.logger.info(f"Loading financial news data from {dataset_path}")
-        df = pd.read_csv(dataset_path, encoding='utf-8', encoding_errors='ignore')
+        df = pd.read_csv(dataset_path, encoding='utf-8', encoding_errors='ignore', header=None, names=['sentiment', 'text'])
 
         # Save to processed directory
         output_path = self.processed_dir / "financial_news_raw.csv"
