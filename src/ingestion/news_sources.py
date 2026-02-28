@@ -274,7 +274,7 @@ class NewsSourcesFetcher(BaseIngestion):
         sentences = []
         sentiments = []
 
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, 'r', encoding='latin-1') as f:
             for line in f:
                 line = line.strip()
                 if not line:

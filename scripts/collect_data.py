@@ -75,8 +75,7 @@ def main():
         print(f"\n[NEWS DATA]")
         print(f"  Total articles: {len(news_df):,}")
         print(f"  Columns: {list(news_df.columns)}")
-        print(f"  Date range: {news_df['Date'].min()} to {news_df['Date'].max()}")
-        print(f"  Saved to: data/processed/news_kaggle.csv")
+        print(f"  Saved to: data/processed/financial_news_raw.csv")
         print(f"\n  Sample:")
         print(news_df.head(3).to_string())
     else:
@@ -85,15 +84,17 @@ def main():
     if not market_df.empty:
         print(f"\n[MARKET DATA]")
         print(f"  Total records: {len(market_df):,}")
-        print(f"  Tickers: {market_df['ticker'].unique().tolist()}")
+        # Get tickers from DataFrame (could be 'ticker' or 'Ticker')
+        ticker_col = 'Ticker' if 'Ticker' in market_df.columns else 'ticker'
+        print(f"  Tickers: {market_df[ticker_col].unique().tolist()}")
         print(f"  Columns: {list(market_df.columns)}")
         print(f"  Date range: {market_df.index.min()} to {market_df.index.max()}")
-        print(f"  Saved to: data/processed/market_data_*.csv")
-        
+        print(f"  Saved to: data/processed/market_data_raw.csv")
+
         # Statistics per ticker
         print(f"\n  Records per ticker:")
         for ticker in tickers:
-            count = len(market_df[market_df['ticker'] == ticker])
+            count = len(market_df[market_df[ticker_col] == ticker])
             print(f"    {ticker}: {count:,} records")
     else:
         print("\n[MARKET DATA] - No data collected")
