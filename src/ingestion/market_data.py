@@ -62,8 +62,8 @@ class MarketDataFetcher(BaseIngestion):
         if market_data:
             combined_df = pd.concat(market_data, ignore_index=True)
             
-            # Save to processed directory
-            output_path = self.processed_dir / "market_data_raw.csv"
+            # Save to raw directory
+            output_path = self.raw_dir / "market_data_raw.csv"
             combined_df.to_csv(output_path, index=False)
             self.logger.info(f"Saved {len(combined_df)} market records to {output_path}")
             

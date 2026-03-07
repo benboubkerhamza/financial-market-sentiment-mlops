@@ -37,21 +37,32 @@ class NewsSourcesFetcher(BaseIngestion):
             if news:
                 news_data = []
                 for article in news:
-                    news_data.append({
-                        'ticker': ticker,
-                        'title': article.get('title', ''),
-                        'publisher': article.get('publisher', ''),
-                        'link': article.get('link', ''),
-                        'published': pd.to_datetime(article.get('providerPublishTime'), unit='s') if article.get('providerPublishTime') else None,
-                        'type': article.get('type', ''),
-                        'thumbnail': article.get('thumbnail', {}).get('resolutions', [{}])[0].get('url', '') if article.get('thumbnail') else ''
-                    })
+                    try:
+                        # Extract content from the article structure
+                        content = article.get('content')
+                        # Skip articles without content
+                        if not content:
+                            continue
+                        news_data.append({
+                            'ticker': ticker,
+                            'title': content.get('title', ''),
+                            'publisher': content.get('provider', {}).get('displayName', ''),
+                            'link': content.get('canonicalUrl', {}).get('url', ''),
+                            'published': pd.to_datetime(content.get('pubDate')) if content.get('pubDate') else None,
+                            'type': content.get('contentType', ''),
+                            'thumbnail': content.get('thumbnail', {}).get('originalUrl', ''),
+                            'summary': content.get('summary', '')
+                        })
+                    except Exception as e:
+                        # Skip problematic articles
+                        self.logger.debug(f"Skipping article due to error: {str(e)}")
+                        continue
 
                 df = pd.DataFrame(news_data)
                 self.logger.info(f"Retrieved {len(df)} news articles for {ticker}")
 
-                # Save to processed directory
-                output_path = self.processed_dir / f"news_{ticker}_yfinance.csv"
+                # Save to raw directory
+                output_path = self.raw_dir / f"news_{ticker}_yfinance.csv"
                 df.to_csv(output_path, index=False)
 
                 return df
@@ -222,81 +233,3 @@ class NewsSourcesFetcher(BaseIngestion):
         self.logger.info(f"Filtered {len(news_df)} news down to {len(filtered_df)} relevant articles")
 
         return filtered_df
-
-    def load_financial_phrase_bank(
-        self,
-        agreement_level: str = "50",
-        dataset_path: str = None
-    ) -> pd.DataFrame:
-        """
-        Load FinancialPhraseBank dataset with sentiment labels
-
-        This is a high-quality sentiment analysis dataset with 4,840 financial sentences
-        annotated by experts from Aalto University.
-
-        Args:
-            agreement_level: Level of annotator agreement
-                           "50" (4,840 sentences), "66", "75", or "all" (216 sentences)
-            dataset_path: Path to FinancialPhraseBank directory
-                         If None, looks in data/raw/FinancialPhraseBank/
-
-        Returns:
-            DataFrame with columns: ['sentence', 'sentiment']
-        """
-        self.logger.info(f"Loading FinancialPhraseBank (agreement_level={agreement_level})")
-
-        # Determine file path
-        if dataset_path is None:
-            base_path = self.raw_dir / "FinancialPhraseBank"
-        else:
-            base_path = Path(dataset_path)
-
-        # Map agreement level to filename
-        file_mapping = {
-            "50": "Sentences_50Agree.txt",
-            "66": "Sentences_66Agree.txt",
-            "75": "Sentences_75Agree.txt",
-            "all": "Sentences_AllAgree.txt"
-        }
-
-        if agreement_level not in file_mapping:
-            raise ValueError(f"Invalid agreement_level: {agreement_level}. Must be one of {list(file_mapping.keys())}")
-
-        file_path = base_path / file_mapping[agreement_level]
-
-        if not file_path.exists():
-            raise FileNotFoundError(
-                f"FinancialPhraseBank file not found: {file_path}\n"
-                f"Download from: https://www.kaggle.com/datasets/ankurzing/sentiment-analysis-for-financial-news"
-            )
-
-        # Parse the file
-        sentences = []
-        sentiments = []
-
-        with open(file_path, 'r', encoding='latin-1') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-
-                # Format: "sentence text@sentiment"
-                if '@' in line:
-                    text, sentiment = line.rsplit('@', 1)
-                    sentences.append(text.strip())
-                    sentiments.append(sentiment.strip())
-
-        df = pd.DataFrame({
-            'sentence': sentences,
-            'sentiment': sentiments
-        })
-
-        self.logger.info(f"Loaded {len(df)} sentences from FinancialPhraseBank")
-        self.logger.info(f"Sentiment distribution:\n{df['sentiment'].value_counts()}")
-
-        # Save to processed directory
-        output_path = self.processed_dir / f"financial_phrase_bank_{agreement_level}.csv"
-        df.to_csv(output_path, index=False)
-        self.logger.info(f"Saved to {output_path}")
-
-        return df

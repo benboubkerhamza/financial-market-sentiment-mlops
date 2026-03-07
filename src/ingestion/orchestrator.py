@@ -58,10 +58,6 @@ class DataIngestion(BaseIngestion):
         """Filter news by keywords. See NewsSourcesFetcher.filter_news_by_company for details."""
         return self.news_fetcher.filter_news_by_company(news_df, company_keywords, **kwargs)
 
-    def load_financial_phrase_bank(self, agreement_level: str = "50", **kwargs) -> pd.DataFrame:
-        """Load FinancialPhraseBank dataset. See NewsSourcesFetcher.load_financial_phrase_bank for details."""
-        return self.news_fetcher.load_financial_phrase_bank(agreement_level, **kwargs)
-
     # Orchestration methods
     def fetch_company_data(
         self,
@@ -136,64 +132,64 @@ class DataIngestion(BaseIngestion):
         news_dataset_path: str = None,
         tickers: List[str] = None,
         market_period: str = "1y"
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
-        Ingest all data sources (news and market data)
+        Ingest all data sources (sentiment training data, news, and market data)
 
         Args:
-            news_dataset_path: Path to Kaggle financial news dataset
+            news_dataset_path: Path to Kaggle financial news dataset (FinancialPhraseBank)
             tickers: List of tickers to fetch market data for
             market_period: Period for market data
 
         Returns:
-            Tuple of (news_df, market_df)
+            Tuple of (sentiment_df, news_df, market_df)
+            - sentiment_df: FinancialPhraseBank for training sentiment model
+            - news_df: Real news articles with timestamps from yfinance
+            - market_df: Market data with prices and volume
         """
         self.logger.info("Starting full data ingestion pipeline")
 
-        # Load news data
+        # Load FinancialPhraseBank (training data for sentiment - kept separate)
         try:
-            news_df = self.load_kaggle_financial_news(news_dataset_path)
+            sentiment_df = self.load_kaggle_financial_news(news_dataset_path)
         except Exception as e:
             self.logger.error(f"Failed to load news data: {str(e)}")
-            news_df = pd.DataFrame()
+            sentiment_df = pd.DataFrame()
 
         # Fetch market data
         if tickers is None:
             self.logger.info("No tickers provided, using default popular stocks")
             tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'NVDA', 'JPM']
 
+        market_df = pd.DataFrame()
+        news_df = pd.DataFrame()
         try:
+            # Fetch market data for all tickers
+            self.logger.info(f"Fetching market data for tickers: {tickers}")
             market_df = self.fetch_market_data(tickers, period=market_period)
+            # Fetch news from yfinance for ALL tickers
+            self.logger.info(f"Fetching news for all {len(tickers)} tickers")
+            news_list = []
+            for ticker in tickers:
+                try:
+                    ticker_news = self.fetch_news_from_yfinance(ticker)
+                    if not ticker_news.empty:
+                        news_list.append(ticker_news)
+                except Exception as e:
+                    self.logger.warning(f"Failed to fetch news for {ticker}: {str(e)}")
+            # Combine all news into one DataFrame
+            if news_list:
+                news_df = pd.concat(news_list, ignore_index=True)
+                # Save combined news to raw directory
+                output_path = self.raw_dir / "financial_news_raw.csv"
+                news_df.to_csv(output_path, index=False)
+                self.logger.info(f"Saved {len(news_df)} news records to {output_path}")
         except Exception as e:
-            self.logger.error(f"Failed to fetch market data: {str(e)}")
-            market_df = pd.DataFrame()
+            self.logger.error(f"Failed to fetch market/news data: {str(e)}")
 
         self.logger.info("Data ingestion pipeline completed")
-        return news_df, market_df
-
-
-def main():
-    """Main function to demonstrate data ingestion"""
-    ingestion = DataIngestion()
-
-    # Ingest all data
-    news_df, market_df = ingestion.ingest_all_data(
-        tickers=['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA'],
-        market_period='1y'
-    )
-
-    print(f"\n=== Data Ingestion Summary ===")
-    print(f"News data shape: {news_df.shape}")
-    print(f"Market data shape: {market_df.shape}")
-
-    if not news_df.empty:
-        print(f"\nNews data columns: {list(news_df.columns)}")
-        print(f"News data preview:\n{news_df.head()}")
-
-    if not market_df.empty:
-        print(f"\nMarket data columns: {list(market_df.columns)}")
-        print(f"Market data preview:\n{market_df.head()}")
-
-
-if __name__ == "__main__":
-    main()
+        self.logger.info(f"\n=== Final Data Summary ===")
+        self.logger.info(f"Sentiment training data: {len(sentiment_df)} phrases")
+        self.logger.info(f"News articles: {len(news_df)} articles")
+        self.logger.info(f"Market data: {len(market_df)} records")
+        return sentiment_df, news_df, market_df

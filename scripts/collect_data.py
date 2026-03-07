@@ -43,28 +43,27 @@ def main():
     print(f"Tickers: {', '.join(tickers)}\n")
     
     # Execute data ingestion
-    news_df, market_df = ingestion.ingest_all_data(
+    sentiment_df, news_df, market_df = ingestion.ingest_all_data(
         tickers=tickers,
         market_period='2y'  # 2 years of historical data
     )
     
-    # Load FinancialPhraseBank dataset
+    # Display FinancialPhraseBank info (already loaded by ingest_all_data)
     print("\n" + "=" * 60)
-    print("LOADING FINANCIALPHRASEBANK DATASET")
+    print("FINANCIALPHRASEBANK DATASET (SENTIMENT TRAINING DATA)")
     print("=" * 60)
     
-    try:
-        phrase_bank_df = ingestion.load_financial_phrase_bank(agreement_level="50")
+    if not sentiment_df.empty:
         print(f"\n[FINANCIALPHRASEBANK]")
-        print(f"  Total sentences: {len(phrase_bank_df):,}")
-        print(f"  Columns: {list(phrase_bank_df.columns)}")
-        print(f"  Sentiment distribution:")
-        for sentiment, count in phrase_bank_df['sentiment'].value_counts().items():
-            print(f"    {sentiment}: {count:,} ({count/len(phrase_bank_df)*100:.1f}%)")
-        print(f"  Saved to: data/processed/financial_phrase_bank_50.csv")
-    except Exception as e:
-        print(f"\n[FINANCIALPHRASEBANK] - Error: {str(e)}")
-        phrase_bank_df = None
+        print(f"  Total sentences: {len(sentiment_df):,}")
+        print(f"  Columns: {list(sentiment_df.columns)}")
+        if 'sentiment' in sentiment_df.columns:
+            print(f"  Sentiment distribution:")
+            for sentiment, count in sentiment_df['sentiment'].value_counts().items():
+                print(f"    {sentiment}: {count:,} ({count/len(sentiment_df)*100:.1f}%)")
+        print(f"  Note: This dataset is for training the sentiment model")
+    else:
+        print(f"\n[FINANCIALPHRASEBANK] - Not loaded (check dataset path)")
     
     # Display results
     print("\n" + "=" * 60)
@@ -72,14 +71,19 @@ def main():
     print("=" * 60)
     
     if not news_df.empty:
-        print(f"\n[NEWS DATA]")
+        print(f"\n[NEWS DATA - Real Articles with Timestamps]")
         print(f"  Total articles: {len(news_df):,}")
         print(f"  Columns: {list(news_df.columns)}")
-        print(f"  Saved to: data/processed/financial_news_raw.csv")
+        if 'ticker' in news_df.columns:
+            print(f"  Tickers: {news_df['ticker'].unique().tolist()}")
+        if 'published' in news_df.columns:
+            print(f"  Date range: {news_df['published'].min()} to {news_df['published'].max()}")
+        print(f"  Saved to: data/raw/financial_news_raw.csv")
+        print(f"  Note: These news will be used to predict sentiment + merge with market data")
         print(f"\n  Sample:")
-        print(news_df.head(3).to_string())
+        print(news_df[['ticker', 'title', 'published']].head(3).to_string() if 'ticker' in news_df.columns else news_df.head(3).to_string())
     else:
-        print("\n[NEWS DATA] - No data collected (check Kaggle dataset path)")
+        print("\n[NEWS DATA] - No data collected")
     
     if not market_df.empty:
         print(f"\n[MARKET DATA]")
@@ -89,7 +93,7 @@ def main():
         print(f"  Tickers: {market_df[ticker_col].unique().tolist()}")
         print(f"  Columns: {list(market_df.columns)}")
         print(f"  Date range: {market_df.index.min()} to {market_df.index.max()}")
-        print(f"  Saved to: data/processed/market_data_raw.csv")
+        print(f"  Saved to: data/raw/market_data_raw.csv")
 
         # Statistics per ticker
         print(f"\n  Records per ticker:")
@@ -105,24 +109,32 @@ def main():
     
     # Summary statistics
     total_datasets = 0
+    if not sentiment_df.empty:
+        total_datasets += 1
     if not news_df.empty:
         total_datasets += 1
     if not market_df.empty:
         total_datasets += 1
-    if phrase_bank_df is not None:
-        total_datasets += 1
     
     print(f"\nTotal datasets collected: {total_datasets}/3")
-    print(f"  - Kaggle News: {'✓' if not news_df.empty else '✗'}")
+    print(f"  - FinancialPhraseBank (for sentiment training): {'✓' if not sentiment_df.empty else '✗'}")
+    print(f"  - News Articles (with timestamps): {'✓' if not news_df.empty else '✗'}")
     print(f"  - Market Data: {'✓' if not market_df.empty else '✗'}")
-    print(f"  - FinancialPhraseBank: {'✓' if phrase_bank_df is not None else '✗'}")
     
     # Next steps
+    print("\n" + "=" * 60)
+    print("DATA ARCHITECTURE")
+    print("=" * 60)
+    print("\n1. FinancialPhraseBank → Train sentiment model (FinBERT/VADER)")
+    print("2. News Articles → Apply sentiment model → Get sentiment scores")
+    print("3. Sentiment scores + Market Data → Merge by (date, ticker)")
+    print("4. Final dataset → Train ML model to predict market movements")
     print("\nNext Steps:")
-    print("  1. Check data quality in data/processed/")
+    print("  1. Check data quality in data/raw/ and data/processed/")
     print("  2. Run exploratory data analysis (EDA)")
-    print("  3. Start preprocessing pipeline")
-    print("  4. Implement sentiment analysis using FinancialPhraseBank as training data")
+    print("  3. Implement sentiment model training (Phase 2.2)")
+    print("  4. Apply sentiment to news articles")
+    print("  5. Merge sentiment + market data for final ML training")
 
 
 if __name__ == "__main__":
