@@ -17,6 +17,8 @@ import numpy as np
 from datetime import datetime
 import joblib
 import json
+import mlflow
+import mlflow.sklearn
 
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.preprocessing import StandardScaler
@@ -25,6 +27,10 @@ from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, 
     classification_report, confusion_matrix
 )
+
+# Import MLflow configuration
+sys.path.insert(0, str(project_root))
+from mlflow_config import setup_mlflow, log_model_metrics, log_model_params, log_dataset_info
 
 
 def load_and_prepare_data():
@@ -257,55 +263,136 @@ def main():
     print("STOCK PRICE PREDICTION - MODEL TRAINING")
     print("="*60)
     
-    # Load data
-    df = load_and_prepare_data()
+    # Setup MLflow
+    setup_mlflow()
     
-    # Create targets
-    df = create_target_variables(df)
-    
-    # Select features
-    feature_cols = select_features(df)
-    
-    # Remove rows with missing features
-    df_clean = df.dropna(subset=feature_cols)
-    print(f"\n✓ After removing missing features: {len(df_clean)} records")
-    
-    # Split data temporally
-    train_df, test_df = temporal_train_test_split(df_clean, test_size=0.2)
-    
-    # Prepare features
-    X_train = train_df[feature_cols]
-    X_test = test_df[feature_cols]
-    
-    # Scale features
-    print("\n" + "="*60)
-    print("FEATURE SCALING")
-    print("="*60)
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-    print("✓ Features scaled using StandardScaler")
-    
-    # Train binary classification models
-    y_train_binary = train_df['target_binary']
-    y_test_binary = test_df['target_binary']
-    results_binary = train_classification_models(
-        X_train_scaled, y_train_binary, 
-        X_test_scaled, y_test_binary, 
-        model_type='binary'
-    )
-    
-    # Save best model
-    metadata = save_best_models(
-        results_binary,
-        scaler, feature_cols
-    )
-    
-    print("\n" + "="*60)
-    print("✓ TRAINING COMPLETED SUCCESSFULLY")
-    print("="*60)
-    
-    return metadata
+    # Start MLflow run
+    with mlflow.start_run(run_name=f"logistic_regression_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
+        
+        # Set tags
+        mlflow.set_tag("model_type", "logistic_regression")
+        mlflow.set_tag("task", "binary_classification")
+        mlflow.set_tag("target", "price_direction")
+        
+        # Load data
+        df = load_and_prepare_data()
+        
+        # Log dataset info
+        log_dataset_info({
+            "n_records": len(df),
+            "n_tickers": df['ticker'].nunique(),
+            "date_range": f"{df['date'].min()} to {df['date'].max()}",
+            "source": "yfinance"
+        })
+        
+        # Create targets
+        df = create_target_variables(df)
+        
+        # Select features
+        feature_cols = select_features(df)
+        
+        # Log feature info
+        mlflow.log_param("n_features", len(feature_cols))
+        mlflow.log_param("features", ", ".join(feature_cols[:5]) + "...")  # Log first 5
+        
+        # Remove rows with missing features
+        df_clean = df.dropna(subset=feature_cols)
+        print(f"\n✓ After removing missing features: {len(df_clean)} records")
+        
+        # Split data temporally
+        train_df, test_df = temporal_train_test_split(df_clean, test_size=0.2)
+        
+        # Log split info
+        mlflow.log_param("train_size", len(train_df))
+        mlflow.log_param("test_size", len(test_df))
+        mlflow.log_param("test_split_ratio", 0.2)
+        mlflow.log_param("split_strategy", "temporal")
+        
+        # Prepare features
+        X_train = train_df[feature_cols]
+        X_test = test_df[feature_cols]
+        
+        # Scale features
+        print("\n" + "="*60)
+        print("FEATURE SCALING")
+        print("="*60)
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+        print("✓ Features scaled using StandardScaler")
+        
+        # Log scaler info
+        mlflow.log_param("scaler", "StandardScaler")
+        
+        # Train binary classification models
+        y_train_binary = train_df['target_binary']
+        y_test_binary = test_df['target_binary']
+        
+        # Log model hyperparameters
+        mlflow.log_param("model_name", "LogisticRegression")
+        mlflow.log_param("max_iter", 1000)
+        mlflow.log_param("random_state", 42)
+        mlflow.log_param("solver", "lbfgs")
+        
+        results_binary = train_classification_models(
+            X_train_scaled, y_train_binary, 
+            X_test_scaled, y_test_binary, 
+            model_type='binary'
+        )
+        
+        # Extract best model results
+        best_model_name = list(results_binary.keys())[0]
+        best_results = results_binary[best_model_name]
+        
+        # Log metrics to MLflow
+        log_model_metrics({
+            "accuracy": best_results['test_acc'],
+            "precision": best_results['test_precision'],
+            "recall": best_results['test_recall'],
+            "f1_score": best_results['test_f1']
+        }, prefix="test_")
+        
+        log_model_metrics({
+            "accuracy": best_results['train_acc']
+        }, prefix="train_")
+        
+        # Log confusion matrix values
+        cm = confusion_matrix(y_test_binary, best_results['predictions'])
+        mlflow.log_metric("confusion_matrix_tn", float(cm[0][0]))
+        mlflow.log_metric("confusion_matrix_fp", float(cm[0][1]))
+        mlflow.log_metric("confusion_matrix_fn", float(cm[1][0]))
+        mlflow.log_metric("confusion_matrix_tp", float(cm[1][1]))
+        
+        # Save best model
+        metadata = save_best_models(
+            results_binary,
+            scaler, feature_cols
+        )
+        
+        # Log model to MLflow
+        mlflow.sklearn.log_model(
+            best_results['model'],
+            "model"
+        )
+        
+        # Log scaler as artifact
+        scaler_path = project_root / 'models' / f"scaler_{metadata['timestamp']}.pkl"
+        mlflow.log_artifact(str(scaler_path), "preprocessing")
+        
+        # Log feature list as artifact
+        features_path = project_root / 'models' / f"features_{metadata['timestamp']}.json"
+        mlflow.log_artifact(str(features_path), "preprocessing")
+        
+        # Log metadata as artifact
+        metadata_path = project_root / 'models' / f"metadata_{metadata['timestamp']}.json"
+        mlflow.log_artifact(str(metadata_path), "metadata")
+        
+        print("\n" + "="*60)
+        print("✓ TRAINING COMPLETED SUCCESSFULLY")
+        print("✓ Results logged to MLflow")
+        print("="*60)
+        
+        return metadata
 
 
 if __name__ == "__main__":
